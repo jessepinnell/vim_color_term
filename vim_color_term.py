@@ -53,8 +53,8 @@ XTERM_XRESOURCES_PREFIX = [
     'XTerm.vt100.locale : true',
     'XTerm.vt100.scrollBar: true',
     'XTerm.vt100.scrollbar.width: 8',
-    'xterm*faceName: Terminus',
-    'xterm*faceSize: 9',
+    'xterm*faceName: {0}'.format(FONT_NAME),
+    'xterm*faceSize: {0}'.format(FONT_SIZE),
     'xterm*saveLines: 200000',
     'xterm*visualBell: True',
     'xterm*boldMode: true',
@@ -168,7 +168,7 @@ def color_distance(color_a_hex_string, color_b_hex_string):
         ((int(767 - rmean) * blue * blue) >> 8))
 
 # pylint: disable=too-many-locals
-def generate_x_resources(filename, xresources_prefix):
+def generate_x_resources(filename, xresources_prefix, xresources_type):
     """
     Generate a list of xresource arguments expected by XTerm from a vim color scheme file
     """
@@ -212,7 +212,7 @@ def generate_x_resources(filename, xresources_prefix):
     if not resource_hex_values:
         raise Exception('invalid format')
 
-    config_format = '*{0}: #{1}'
+    config_format = xresources_type + '*{0}: #{1}'
     return xresources_prefix + sorted([config_format.format(resource, hex_value)\
         for resource, hex_value in resource_hex_values.items()])
 
@@ -240,7 +240,8 @@ if __name__ == '__main__':
     for vim_file in GLOBBED_FILES:
         try:
             xresources = generate_x_resources(vim_file,\
-                URXVT_XRESOURCES_PREFIX if PARSED_ARGS.urxvt else XTERM_XRESOURCES_PREFIX)
+                URXVT_XRESOURCES_PREFIX if PARSED_ARGS.urxvt else XTERM_XRESOURCES_PREFIX,
+                "URxvt"if PARSED_ARGS.urxvt else "xterm")
 
             xresources = [['-xrm', xresource] for xresource in xresources]
 
