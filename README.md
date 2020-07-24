@@ -43,4 +43,5 @@ For help:
 ```bash
 $ python3 vim_color_term.py --help
 ```
-
+## Screenshot
+![Screenshot showing results of repeated calls of the script](http://vapid.io/images/vim_color_term_screenshot.png)
