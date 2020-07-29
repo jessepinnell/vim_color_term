@@ -143,7 +143,7 @@ def load_vim_named_colors():
             for line in rgbfile:
                 color_matcher = color_regex.match(line)
                 if color_matcher is not None and color_matcher.groups(1) is not None:
-                    NAMED_COLORS[color_matcher.groups()[3]] = "{0:02x}{0:02x}{0:02x}".format(
+                    NAMED_COLORS[color_matcher.groups()[3].lower()] = "{0:02x}{0:02x}{0:02x}".format(
                         *(int(color) for color in color_matcher.groups()[0:3]))
 
     # pylint: disable=broad-except
