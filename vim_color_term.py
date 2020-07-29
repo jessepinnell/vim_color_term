@@ -185,6 +185,11 @@ def generate_x_resources(filename, xresources_prefix, xresources_type):
                     vim_color_value = matcher.groups()[0].lower()
                     if vim_color_value in NAMED_COLORS.keys():
                         hex_value = NAMED_COLORS[vim_color_value]
+                    elif vim_color_value == 'fg' or vim_color_value == 'bg':
+                        # set as "fg" or "bg" values for now, we'll
+                        # resolve these below once we're certain we have
+                        # valid values for foreground and background
+                        hex_value = vim_color_value
                     else:
                         hex_matcher = hex_regex.match(vim_color_value)
                         if hex_matcher is not None and hex_matcher.groups(1) is not None:
@@ -201,10 +206,14 @@ def generate_x_resources(filename, xresources_prefix, xresources_type):
     if background_color is None or foreground_color is None:
         raise Exception('no background or foreground color')
 
-    # This attempts to prevent a light foreground on a light background or a dark foreground
-    # on a dark background but it doesn't work really well
     for resource, color in resource_hex_values.items():
-        if resource != 'background':
+        if color == 'fg':
+            resource_hex_values[resource] = foreground_color
+        elif color == 'bg':
+            resource_hex_values[resource] = background_color
+        elif resource != 'background':
+            # This attempts to prevent a light foreground on a light background or a dark foreground
+            # on a dark background but it doesn't work really well
             distance = color_distance(color, background_color)
             if distance < 10.0:
                 resource_hex_values[resource] = foreground_color
