@@ -117,6 +117,28 @@ MAPPINGS = {
     'color15': r'.*Todo.*?guifg=([#\w]+).*'         # white
 }
 
+# Color scheme to show if all else fails; think a tasty cherry milkshake
+FAILSAFE_COLOR_SCHEME = {
+    "background": "#fbe7eb",
+    "foreground": "#130a0d",
+    "color0":  "#000000",
+    "color1":  "#d80f14",
+    "color2":  "#777777",
+    "color3":  "#671012",
+    "color4":  "#26266b",
+    "color5":  "#f09fac",
+    "color6":  "#46464b",
+    "color7":  "#ffffff",
+    "color8":  "#000000",
+    "color9":  "#d80f14",
+    "color10": "#77777b",
+    "color11": "#8e1417",
+    "color12": "#6a4751",
+    "color13": "#fbe7eb",
+    "color14": "#9a5d6e",
+    "color15": "#ffffff"
+}
+
 ### ---------------------------- END adjust-as-needed constants -------------------------------- ###
 
 URXVT_COMMAND = 'urxvt'
@@ -143,7 +165,8 @@ def load_vim_named_colors():
             for line in rgbfile:
                 color_matcher = color_regex.match(line)
                 if color_matcher is not None and color_matcher.groups(1) is not None:
-                    NAMED_COLORS[color_matcher.groups()[3].lower()] = "{0:02x}{0:02x}{0:02x}".format(
+                    NAMED_COLORS[color_matcher.groups()[3].lower()] = \
+                        "{0:02x}{0:02x}{0:02x}".format(\
                         *(int(color) for color in color_matcher.groups()[0:3]))
 
     # pylint: disable=broad-except
@@ -168,6 +191,7 @@ def color_distance(color_a_hex_string, color_b_hex_string):
         ((int(767 - rmean) * blue * blue) >> 8))
 
 # pylint: disable=too-many-locals
+# pylint: disable=too-many-branches
 def generate_x_resources(filename, xresources_prefix, xresources_type):
     """
     Generate a list of xresource arguments expected by XTerm from a vim color scheme file
@@ -185,7 +209,7 @@ def generate_x_resources(filename, xresources_prefix, xresources_type):
                     vim_color_value = matcher.groups()[0].lower()
                     if vim_color_value in NAMED_COLORS.keys():
                         hex_value = NAMED_COLORS[vim_color_value]
-                    elif vim_color_value == 'fg' or vim_color_value == 'bg':
+                    elif vim_color_value in ('fg', 'bg'):
                         # set as "fg" or "bg" values for now, we'll
                         # resolve these below once we're certain we have
                         # valid values for foreground and background
@@ -225,6 +249,8 @@ def generate_x_resources(filename, xresources_prefix, xresources_type):
     return xresources_prefix + sorted([config_format.format(resource, hex_value)\
         for resource, hex_value in resource_hex_values.items()])
 
+
+# pylint: disable=invalid-name
 if __name__ == '__main__':
     PARSER = argparse.ArgumentParser(\
         description='convert vim color file to Xresources/xtermcontrol config')
@@ -246,35 +272,48 @@ if __name__ == '__main__':
 
     load_vim_named_colors()
 
+    term_args = []
+    term_environment = os.environ.copy()
+
     for vim_file in GLOBBED_FILES:
         try:
             xresources = generate_x_resources(vim_file,\
-                URXVT_XRESOURCES_PREFIX if PARSED_ARGS.urxvt else XTERM_XRESOURCES_PREFIX,
+                URXVT_XRESOURCES_PREFIX if PARSED_ARGS.urxvt else XTERM_XRESOURCES_PREFIX,\
                 "URxvt"if PARSED_ARGS.urxvt else "xterm")
 
-            xresources = [['-xrm', xresource] for xresource in xresources]
+            term_args = [['-xrm', xresource] for xresource in xresources]
 
-            command = [URXVT_COMMAND if PARSED_ARGS.urxvt else XTERM_COMMAND]\
-                + [arg for args in xresources for arg in args]
-
-            term_environment = os.environ.copy()
             term_environment[ENV_COLOR_SCHEME_NAME_VAR] = vim_file
 
-            with subprocess.Popen(command, stdout=subprocess.PIPE, env=term_environment) as process:
-                (stdout, stderr) = process.communicate()
-                return_code = process.wait()
-
-                if return_code:
-                    if stderr is None:
-                        error = ""
-                    else:
-                        error = stderr.decode()
-                        sys.exit("ERROR: '{0}' command error: {1} {2}".format(\
-                            command, stdout.decode(), error))
-                print(stdout.decode())
-                break
-
+            break
         # pylint: disable=bare-except
         except:
             # Ignore crap file and try another
             pass
+
+    # None of the files were usable
+    if not term_args:
+        term_environment[ENV_COLOR_SCHEME_NAME_VAR] = "({0} failsafe color scheme)".format(__file__)
+
+        prefix = "URxvt"if PARSED_ARGS.urxvt else "xterm"
+        xresources = ["{0}*{1}: {2}".format(prefix, resource, color)\
+            for (resource, color) in FAILSAFE_COLOR_SCHEME.items()]
+        xresources.extend(URXVT_XRESOURCES_PREFIX if PARSED_ARGS.urxvt else XTERM_XRESOURCES_PREFIX)
+
+        term_args = [['-xrm', xresource] for xresource in xresources]
+
+    command = [URXVT_COMMAND if PARSED_ARGS.urxvt else XTERM_COMMAND]\
+        + [arg for args in term_args for arg in args]
+
+    with subprocess.Popen(command, stdout=subprocess.PIPE, env=term_environment) as process:
+        (stdout, stderr) = process.communicate()
+        return_code = process.wait()
+
+        if return_code:
+            if stderr is None:
+                error = ""
+            else:
+                error = stderr.decode()
+                sys.exit("ERROR: '{0}' command error: {1} {2}".format(\
+                    command, stdout.decode(), error))
+        print(stdout.decode())
