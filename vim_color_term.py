@@ -33,8 +33,11 @@ from pathlib import Path
 
 ### ----------------------------- Adjust-as-needed constants --------------------------------- ###
 # Adjust this accordingly or install the terminus fonts via Debian/Ubuntu 'xfonts-terminus' package
-FONT_NAME = 'Terminus'
-FONT_SIZE = 9
+FONT_NAME = 'Anonymous Pro Regular'
+BOLD_FONT_NAME = 'Anonymous Pro Bold'
+ITALIC_FONT_NAME = 'Anonymous Pro Italic'
+BOLD_ITALIC_FONT_NAME = 'Anonymous Pro Bold Italic'
+FONT_SIZE = 11
 
 # Set this to the system vim runtime value ($VIMRUNTIME in vim)
 # It will be (crudely) guessed if this isn't set
@@ -45,7 +48,7 @@ VIMRUNTIME = ''
 ENV_COLOR_SCHEME_NAME_VAR = "VIM_COLOR_TERM_COLOR_SCHEME_FILE"
 
 # xterm command (via -xrm argument) XResources will be primed with this stuff (customize these)
-XTERM_XRESOURCES_PREFIX = [
+XTERM_XRESOURCES = [
     'xterm*termName: xterm-256color',
     'xterm*loginShell: true',
     'xterm*dynamicColors: true',
@@ -62,7 +65,7 @@ XTERM_XRESOURCES_PREFIX = [
 ]
 
 # urxvt command (via -xrm argument) XResources will be primed with this stuff (customize these)
-URXVT_XRESOURCES_PREFIX = [
+URXVT_XRESOURCES = [
     'URxvt.termName: rxvt-unicode-256color',
     'URxvt.font: xft:{0}:style=Regular:size={1}'.format(FONT_NAME, FONT_SIZE),
     'URxvt.boldFont: xft:{0}:style=Bold:size={1}'.format(FONT_NAME, FONT_SIZE),
@@ -74,12 +77,24 @@ URXVT_XRESOURCES_PREFIX = [
     'URxvt.internalBorder: 0',
     'URxvt.cursorBlink: true',
     'URxvt.cursorUnderline: false',
-    'URxvt.saveline: 200000',
+    'URxvt.saveLines: 200000',
     'URxvt.scrollBar: true',
     'URxvt.scrollBar_right: false',
     'URxvt.urgentOnBell: true',
     'URxvt.depth: 24',
     'URxvt.iso14755: false',
+]
+
+# kitty command (via -o argument) config vaules will be primed with this stuff (customize these or use a config file)
+KITTY_OPTIONS = [
+    'term=xterm-kitty',
+    'font_size={0}'.format(FONT_SIZE),
+    'font_family={0}'.format(FONT_NAME),
+    'bold_font={0}'.format(BOLD_FONT_NAME),
+    'italic_font={0}'.format(ITALIC_FONT_NAME),
+    'bold_italic_font={0}'.format(BOLD_ITALIC_FONT_NAME),
+    'scrollback_lines=200000',
+    'kitty_mod=super',
 ]
 
 # If no vim color scheme files are provided via the command-line, prefer these (customize these)
@@ -142,7 +157,11 @@ FAILSAFE_COLOR_SCHEME = {
 ### ---------------------------- END adjust-as-needed constants -------------------------------- ###
 
 URXVT_COMMAND = 'urxvt'
+URXVT_XRESOURCES_PREFIX = '-xrm'
+KITTY_COMMAND = 'kitty'
+KITTY_OPTIONS_PREFIX = '-o'
 XTERM_COMMAND = 'xterm'
+XTERM_XRESOURCES_PREFIX = '-xrm'
 
 # If not set, try to guess the VIMRUNTIME
 if not VIMRUNTIME:
@@ -192,16 +211,16 @@ def color_distance(color_a_hex_string, color_b_hex_string):
 
 # pylint: disable=too-many-locals
 # pylint: disable=too-many-branches
-def generate_x_resources(filename, xresources_prefix, xresources_type):
+def generate_options(filename, options, option_format):
     """
-    Generate a list of xresource arguments expected by XTerm from a vim color scheme file
+    Generate a list of options arguments expected by the terminals from a vim color scheme file
     """
     resource_hex_values = {}
     compiled_mappings =\
-        {xresource: re.compile(this_regex) for (xresource, this_regex) in MAPPINGS.items()}
+        {option: re.compile(this_regex) for (option, this_regex) in MAPPINGS.items()}
     hex_regex = re.compile('#([0-9a-f]{6})')
 
-    for xresource, reggie in compiled_mappings.items():
+    for option, reggie in compiled_mappings.items():
         with open(filename, 'r') as vimfile:
             for line in vimfile:
                 matcher = reggie.match(line)
@@ -221,7 +240,7 @@ def generate_x_resources(filename, xresources_prefix, xresources_type):
                         else:
                             raise Exception('invalid hex: ' + vim_color_value)
 
-                    resource_hex_values[xresource] = hex_value
+                    resource_hex_values[option] = hex_value
                     break
 
     # Adjust colors too close to background and set them to the foreground
@@ -245,8 +264,7 @@ def generate_x_resources(filename, xresources_prefix, xresources_type):
     if not resource_hex_values:
         raise Exception('invalid format')
 
-    config_format = xresources_type + '*{0}: #{1}'
-    return xresources_prefix + sorted([config_format.format(resource, hex_value)\
+    return options + sorted([option_format.format(resource, hex_value)\
         for resource, hex_value in resource_hex_values.items()])
 
 
@@ -259,6 +277,7 @@ if __name__ == '__main__':
     GROUP = PARSER.add_mutually_exclusive_group()
     GROUP.add_argument('--xterm', action='store_true', help='create an xterm terminal')
     GROUP.add_argument('--urxvt', action='store_true', help='create an urxvt terminal')
+    GROUP.add_argument('--kitty', action='store_true', help='create an kitty terminal')
 
     PARSED_ARGS = PARSER.parse_args()
 
@@ -272,16 +291,20 @@ if __name__ == '__main__':
 
     load_vim_named_colors()
 
-    term_args = []
+    command = []
     term_environment = os.environ.copy()
 
     for vim_file in GLOBBED_FILES:
         try:
-            xresources = generate_x_resources(vim_file,\
-                URXVT_XRESOURCES_PREFIX if PARSED_ARGS.urxvt else XTERM_XRESOURCES_PREFIX,\
-                "URxvt"if PARSED_ARGS.urxvt else "xterm")
-
-            term_args = [['-xrm', xresource] for xresource in xresources]
+            if PARSED_ARGS.urxvt:
+                raw_options = [[URXVT_XRESOURCES_PREFIX, option] for option in generate_options(vim_file, URXVT_XRESOURCES, 'URxvt*{0}: #{1}')]
+                command = [URXVT_COMMAND] + [option for squashed in raw_options for option in squashed]
+            elif PARSED_ARGS.kitty:
+                raw_options = [[KITTY_OPTIONS_PREFIX, option] for option in generate_options(vim_file, KITTY_OPTIONS, "{0}=#{1}")]
+                command = [KITTY_COMMAND] + [option for squashed in raw_options for option in squashed]
+            else:
+                raw_options = [[XTERM_XRESOURCES_PREFIX, option] for option in generate_options(vim_file, XTERM_XRESOURCES, "xterm*{0}: #{1}")]
+                command = [XTERM_COMMAND] + [option for squashed in raw_options for option in squashed]
 
             term_environment[ENV_COLOR_SCHEME_NAME_VAR] = vim_file
 
@@ -291,19 +314,7 @@ if __name__ == '__main__':
             # Ignore crap file and try another
             pass
 
-    # None of the files were usable
-    if not term_args:
-        term_environment[ENV_COLOR_SCHEME_NAME_VAR] = "({0} failsafe color scheme)".format(__file__)
-
-        prefix = "URxvt"if PARSED_ARGS.urxvt else "xterm"
-        xresources = ["{0}*{1}: {2}".format(prefix, resource, color)\
-            for (resource, color) in FAILSAFE_COLOR_SCHEME.items()]
-        xresources.extend(URXVT_XRESOURCES_PREFIX if PARSED_ARGS.urxvt else XTERM_XRESOURCES_PREFIX)
-
-        term_args = [['-xrm', xresource] for xresource in xresources]
-
-    command = [URXVT_COMMAND if PARSED_ARGS.urxvt else XTERM_COMMAND]\
-        + [arg for args in term_args for arg in args]
+    print("command: ", command)
 
     with subprocess.Popen(command, stdout=subprocess.PIPE, env=term_environment) as process:
         (stdout, stderr) = process.communicate()
